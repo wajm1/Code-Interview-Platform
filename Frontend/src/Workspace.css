@@ -1,0 +1,190 @@
+/* Interview workspace layout */
+
+.ws {
+  height: 100vh;
+  height: 100dvh;
+  width: 100vw;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "topbar topbar"
+    "main sidebar";
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.ws-topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.ws-topbar-left,
+.ws-topbar-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ws-muted {
+  color: var(--muted);
+}
+
+.ws-main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+}
+
+.ws-editor {
+  flex: 1 1 auto;
+  min-height: 120px;
+  min-width: 0;
+}
+
+.ws-split-y {
+  flex: 0 0 6px;
+  cursor: row-resize;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+
+.ws-split-y::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 36px;
+  height: 2px;
+  transform: translate(-50%, -50%);
+  background: var(--muted);
+  border-radius: 1px;
+  opacity: 0.55;
+}
+
+.ws-split-y:hover,
+.ws-split-y:active {
+  background: #1c2230;
+}
+
+.ws-console {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  padding: 8px 10px 10px;
+  gap: 8px;
+}
+
+.ws-console-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ws-console-out {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0b0d12;
+  color: var(--text);
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+.ws-sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--panel);
+}
+
+.ws-presence {
+  flex: 0 0 auto;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ws-presence ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 88px;
+  overflow-y: auto;
+}
+
+.ws-chat {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+}
+
+.ws-chat-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: #0b0d12;
+}
+
+.ws-chat-log > div {
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.ws-chat-compose {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.ws-chat-compose input {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 820px) {
+  .ws {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr) minmax(200px, 34vh);
+    grid-template-areas:
+      "topbar"
+      "main"
+      "sidebar";
+  }
+
+  .ws-main {
+    border-right: none;
+  }
+
+  .ws-sidebar {
+    border-top: 1px solid var(--line);
+  }
+}

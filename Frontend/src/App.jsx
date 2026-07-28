@@ -13,6 +13,7 @@ import { io } from "socket.io-client";
 import { getApiBase } from "./config.js";
 import { createDemoSocket, shouldUseDemoMode } from "./demoSocket.js";
 import Editor from "./Editor.jsx";
+import "./Workspace.css";
 
 const API_BASE = getApiBase();
 const DEMO_MODE = shouldUseDemoMode();
@@ -353,67 +354,42 @@ export default function App() {
     setRunOutput(full || "—");
   };
 
-  // Resizable chat panel
-  const [chatHeight, setChatHeight] = useState(260);
-  const [dragging, setDragging] = useState(false);
+  // Resizable terminal (editor ↔ console split)
+  const [consoleHeight, setConsoleHeight] = useState(220);
+  const [draggingConsole, setDraggingConsole] = useState(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
 
   useEffect(() => {
+    if (!draggingConsole) return;
     const onMove = (event) => {
-      if (!dragging) return;
       const dy = event.clientY - dragStartY.current;
-      setChatHeight(Math.max(120, Math.min(600, dragStartHeight.current + dy)));
+      // Dragging the handle down shrinks the console; up grows it.
+      const next = Math.max(120, Math.min(480, dragStartHeight.current - dy));
+      setConsoleHeight(next);
     };
-    const onUp = () => setDragging(false);
+    const onUp = () => setDraggingConsole(false);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     return () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [dragging]);
+  }, [draggingConsole]);
 
   return (
-    <div
-      style={{
-        height: "100vh",
-        width: "100vw",
-        display: "grid",
-        gridTemplateColumns: "1fr 360px",
-        gridTemplateRows: "auto 1fr auto",
-        gridTemplateAreas: `
-          "topbar  topbar"
-          "editor  sidebar"
-          "console sidebar"
-        `,
-      }}
-    >
-      <div
-        style={{
-          gridArea: "topbar",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 14px",
-          borderBottom: "1px solid var(--line)",
-          background: "var(--panel)",
-        }}
-      >
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+    <div className="ws">
+      <div className="ws-topbar">
+        <div className="ws-topbar-left">
           <strong>Code Interview Platform</strong>
-          <span style={{ color: "var(--muted)" }}>
+          <span className="ws-muted">
             Room: <code>{roomId}</code>
           </span>
-          <span style={{ color: "var(--muted)" }}>
-            {DEMO_MODE
-              ? "demo mode"
-              : connected
-                ? "connected"
-                : "offline"}
+          <span className="ws-muted">
+            {DEMO_MODE ? "demo mode" : connected ? "connected" : "offline"}
           </span>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="ws-topbar-right">
           <select
             value={language}
             onChange={(e) => {
@@ -436,81 +412,69 @@ export default function App() {
         </div>
       </div>
 
-      <div
-        style={{
-          gridArea: "editor",
-          minWidth: 0,
-          minHeight: 0,
-          borderRight: "1px solid var(--line)",
-        }}
-      >
-        <Editor
-          roomId={roomId}
-          socket={socket}
-          language={language}
-          onChange={handleEditorChange}
+      <div className="ws-main">
+        <div className="ws-editor">
+          <Editor
+            roomId={roomId}
+            socket={socket}
+            language={language}
+            onChange={handleEditorChange}
+          />
+        </div>
+
+        <div
+          className="ws-split-y"
+          title="Drag to resize terminal"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setDraggingConsole(true);
+            dragStartY.current = e.clientY;
+            dragStartHeight.current = consoleHeight;
+          }}
         />
+
+        <div className="ws-console" style={{ height: consoleHeight }}>
+          <div className="ws-console-toolbar">
+            <button type="button" onClick={runCode}>
+              Run ({language})
+            </button>
+            <span className="ws-muted">Output</span>
+          </div>
+          <textarea
+            className="ws-console-out"
+            value={runOutput}
+            readOnly
+            placeholder="Program output will appear here…"
+          />
+        </div>
       </div>
 
-      <div
-        style={{
-          gridArea: "sidebar",
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 0,
-          background: "var(--panel)",
-          borderLeft: "1px solid var(--line)",
-        }}
-      >
-        <div style={{ padding: 12, borderBottom: "1px solid var(--line)" }}>
+      <aside className="ws-sidebar">
+        <div className="ws-presence">
           <div style={{ marginBottom: 6, fontWeight: 600 }}>
             You: <code>{name || "—"}</code>
           </div>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>In room:</div>
-          <ul style={{ margin: 0, paddingLeft: 18, maxHeight: 140, overflowY: "auto" }}>
+          <div style={{ fontWeight: 600 }}>In room:</div>
+          <ul>
             {members.map((member) => (
               <li key={member}>{member}</li>
             ))}
           </ul>
         </div>
 
-        <div
-          onMouseDown={(e) => {
-            setDragging(true);
-            dragStartY.current = e.clientY;
-            dragStartHeight.current = chatHeight;
-          }}
-          style={{
-            height: 6,
-            cursor: "row-resize",
-            background: "linear-gradient(90deg, transparent, var(--line), transparent)",
-          }}
-          title="Drag to resize chat"
-        />
-
-        <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="ws-chat">
           <div style={{ fontWeight: 600 }}>Chat</div>
-          <div
-            style={{
-              height: chatHeight,
-              overflowY: "auto",
-              border: "1px solid var(--line)",
-              borderRadius: 8,
-              padding: 8,
-              background: "#0b0d12",
-            }}
-          >
+          <div className="ws-chat-log">
             {messages.map((msg, index) => (
-              <div key={`${msg.ts}-${index}`} style={{ marginBottom: 6 }}>
+              <div key={`${msg.ts}-${index}`}>
                 <b>{msg.name || "User"}</b>: {msg.text}
               </div>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="ws-chat-compose">
             <input
               ref={chatInputRef}
               placeholder="Type a message"
-              style={{ flex: 1 }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") sendChat();
               }}
@@ -520,44 +484,7 @@ export default function App() {
             </button>
           </div>
         </div>
-      </div>
-
-      <div
-        style={{
-          gridArea: "console",
-          borderTop: "1px solid var(--line)",
-          background: "var(--panel)",
-          padding: 10,
-          display: "flex",
-          gap: 8,
-          alignItems: "flex-start",
-        }}
-      >
-        <button type="button" onClick={runCode}>
-          Run ({language})
-        </button>
-        <div style={{ color: "var(--muted)", paddingTop: 6 }}>Output:</div>
-        <textarea
-          value={runOutput}
-          readOnly
-          style={{
-            flex: 1,
-            minHeight: 60,
-            maxHeight: 240,
-            height: 100,
-            resize: "vertical",
-            border: "1px solid var(--line)",
-            borderRadius: 8,
-            background: "#0b0d12",
-            color: "var(--text)",
-            padding: 8,
-            fontFamily:
-              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-            whiteSpace: "pre-wrap",
-          }}
-          placeholder="Program output will appear here…"
-        />
-      </div>
+      </aside>
 
       {needsName && (
         <NameModal
