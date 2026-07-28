@@ -19,7 +19,7 @@ export default function Landing() {
       <div className="lp-atmosphere" aria-hidden="true" />
 
       <header className="lp-top">
-        <span className="lp-mark">CIP</span>
+        <span className="lp-mark" aria-hidden="true" />
         <a
           className="lp-source"
           href="https://github.com/wajm1/Code-Interview-Platform"
