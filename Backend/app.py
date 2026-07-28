@@ -183,6 +183,17 @@ def normalize_language(lang: str):
     return aliases.get((lang or "").strip().lower())
 
 
+def close_room_if_empty(room: str) -> bool:
+    """Drop all in-memory state for a room once the last member leaves."""
+    if ROOM_MEMBERS.get(room):
+        return False
+    ROOM_MEMBERS.pop(room, None)
+    ROOM_CODE.pop(room, None)
+    ROOM_CHAT.pop(room, None)
+    ROOM_LANG.pop(room, None)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Socket.IO events
 # ---------------------------------------------------------------------------
@@ -306,12 +317,14 @@ def on_disconnect():
         return
 
     ROOM_MEMBERS[room].discard(name)
+    closed = close_room_if_empty(room)
     emit(
         "room:presence",
         {
             "roomId": room,
-            "members": sorted(ROOM_MEMBERS[room]),
+            "members": [] if closed else sorted(ROOM_MEMBERS[room]),
             "left": name,
+            "closed": closed,
         },
         to=room,
     )

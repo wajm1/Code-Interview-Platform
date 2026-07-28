@@ -32,6 +32,10 @@ function saveRoom(roomId, state) {
   localStorage.setItem(storageKey(roomId), JSON.stringify(state));
 }
 
+function closeRoom(roomId) {
+  localStorage.removeItem(storageKey(roomId));
+}
+
 function pruneMembers(members) {
   const now = Date.now();
   const next = {};
@@ -202,12 +206,20 @@ export function createDemoSocket() {
     if (myName) {
       const state = loadRoom(roomId);
       delete state.members[myName];
-      saveRoom(roomId, state);
+      const remaining = pruneMembers(state.members);
+      const closed = Object.keys(remaining).length === 0;
+      if (closed) {
+        closeRoom(roomId);
+      } else {
+        state.members = remaining;
+        saveRoom(roomId, state);
+      }
       broadcast({
         type: "presence",
         roomId,
-        members: Object.keys(pruneMembers(state.members)).sort(),
+        members: Object.keys(remaining).sort(),
         left: myName,
+        closed,
       });
     }
     channel?.close();

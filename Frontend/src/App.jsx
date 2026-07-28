@@ -114,9 +114,30 @@ async function executeCode(language, code, { demoMode, apiBase }) {
 // URL / storage helpers
 // ---------------------------------------------------------------------------
 
-function getRoomId() {
+function createRoomId() {
+  // Short, shareable room codes (e.g. "k7f2qm")
+  return Math.random().toString(36).slice(2, 8);
+}
+
+/** Use ?room= from the URL, or mint a new room for this session. */
+function resolveRoomId() {
   const params = new URLSearchParams(window.location.search);
-  return params.get("room") || "default";
+  const fromUrl = params.get("room")?.trim();
+  if (fromUrl) return fromUrl;
+  return createRoomId();
+}
+
+/**
+ * Invite URL for this room only.
+ * Always includes ?room=<id> so invitees join the same session.
+ */
+function buildInviteLink(roomId) {
+  const url = new URL(window.location.href);
+  url.hash = "";
+  // Clear existing query, then set only the room (drop personal name, etc.)
+  url.search = "";
+  url.searchParams.set("room", roomId);
+  return url.toString();
 }
 
 function getStoredName() {
@@ -189,8 +210,30 @@ function NameModal({ initial, onSubmit }) {
 // ---------------------------------------------------------------------------
 
 export default function App() {
-  const roomId = useMemo(() => getRoomId(), []);
+  const roomId = useMemo(() => resolveRoomId(), []);
   const [connected, setConnected] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  // Put ?room=<id> in the address bar immediately so the page URL is shareable.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.hash = "";
+    url.search = "";
+    url.searchParams.set("room", roomId);
+    window.history.replaceState({}, "", url);
+  }, [roomId]);
+
+  const copyInviteLink = async () => {
+    const link = buildInviteLink(roomId);
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      window.prompt("Copy this invite link:", link);
+      return;
+    }
+    setInviteCopied(true);
+    window.setTimeout(() => setInviteCopied(false), 2000);
+  };
 
   const [needsName, setNeedsName] = useState(true);
   const [name, setName] = useState(getStoredName());
@@ -384,11 +427,8 @@ export default function App() {
             <option value="cpp">C++</option>
             <option value="java">Java</option>
           </select>
-          <button
-            type="button"
-            onClick={() => navigator.clipboard?.writeText(window.location.href)}
-          >
-            Copy Invite Link
+          <button type="button" onClick={copyInviteLink}>
+            {inviteCopied ? "Copied!" : "Copy Invite Link"}
           </button>
           <button type="button" onClick={rename}>
             Rename
