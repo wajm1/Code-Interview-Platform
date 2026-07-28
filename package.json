@@ -1,5 +1,12 @@
 {
-  "dependencies": {
-    "firebase": "^12.3.0"
+  "name": "code-interview-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Real-time multi-user code interview platform",
+  "scripts": {
+    "dev:frontend": "npm --prefix Frontend run dev",
+    "dev:backend": "Backend/.venv/bin/python Backend/app.py",
+    "build": "npm --prefix Frontend run build",
+    "start": "Backend/.venv/bin/python Backend/app.py"
   }
 }

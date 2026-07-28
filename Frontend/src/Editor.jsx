@@ -1,28 +1,38 @@
-// Editor.jsx
+/**
+ * Collaborative Monaco editor for a single interview room.
+ *
+ * Creates the editor once per room, syncs local edits to the server
+ * (throttled), and applies remote patches without echo loops.
+ * Language changes only update syntax highlighting — the buffer is kept.
+ */
+
 import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor";
 
 /**
- * Props:
- * - roomId: string
- * - socket: connected socket.io client (shared singleton)
- * - language: "python" | "javascript" | "cpp" | "java"
- * - onChange: (code: string) => void
+ * @param {object} props
+ * @param {string} props.roomId
+ * @param {import("socket.io-client").Socket} props.socket
+ * @param {"python"|"javascript"|"cpp"|"java"} [props.language]
+ * @param {(code: string) => void} [props.onChange]
  */
 export default function Editor({ roomId, socket, language = "python", onChange }) {
   const editorElRef = useRef(null);
   const editorRef = useRef(null);
-  const inboundRef = useRef("");     // last code received from server to avoid echo
-  const throttleRef = useRef(null);  // debounce timer for emitting updates
+  /** Last code applied from the server — used to skip re-broadcasting echoes. */
+  const inboundRef = useRef("");
+  /** Debounce timer for outbound code:update events. */
+  const throttleRef = useRef(null);
 
-  // Create the editor ONCE per room (do not depend on language or onChange)
+  // Create the editor once per room (do not depend on language or onChange).
   useEffect(() => {
     const el = editorElRef.current;
     if (!el) return;
 
     const editor = monaco.editor.create(el, {
-      value: "# Start coding together!\n# This text will NOT reset on Run or language change.\n",
-      language,                   // only used for the initial create
+      value:
+        "# Start coding together!\n# Text persists across Run and language changes.\n",
+      language,
       automaticLayout: true,
       fontSize: 14,
       minimap: { enabled: false },
@@ -30,29 +40,26 @@ export default function Editor({ roomId, socket, language = "python", onChange }
     });
     editorRef.current = editor;
 
-    // Report initial value so "Run" works before typing
     try {
       if (typeof onChange === "function") onChange(editor.getValue());
-    } catch {}
+    } catch {
+      /* ignore */
+    }
 
-    // Local edits -> emit to room (throttled)
     const onLocalChange = () => {
       const code = editor.getValue();
       if (typeof onChange === "function") onChange(code);
-
-      // avoid re-broadcasting code we just applied from the server
       if (code === inboundRef.current) return;
 
       clearTimeout(throttleRef.current);
       throttleRef.current = setTimeout(() => {
-        if (socket && socket.connected) {
+        if (socket?.connected) {
           socket.emit("code:update", { roomId, code });
         }
       }, 120);
     };
     const disposable = editor.onDidChangeModelContent(onLocalChange);
 
-    // Server -> apply incoming code (no echo)
     const onApply = (payload) => {
       if (!payload || payload.roomId !== roomId) return;
       const current = editor.getValue();
@@ -63,18 +70,24 @@ export default function Editor({ roomId, socket, language = "python", onChange }
       }
     };
 
-    if (socket) socket.on("code:apply", onApply);
+    socket?.on("code:apply", onApply);
 
     return () => {
       disposable?.dispose();
-      if (socket) socket.off("code:apply", onApply);
+      socket?.off("code:apply", onApply);
       clearTimeout(throttleRef.current);
-      try { editor.dispose(); } catch {}
+      try {
+        editor.dispose();
+      } catch {
+        /* ignore */
+      }
       editorRef.current = null;
     };
-  }, [roomId, socket]); // IMPORTANT: do NOT add `language` or `onChange` here
+    // Intentionally omit language / onChange so the editor is not recreated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, socket]);
 
-  // Change syntax highlighting WITHOUT recreating the editor
+  // Update syntax highlighting without destroying the editor instance.
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;

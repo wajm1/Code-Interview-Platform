@@ -1,55 +1,104 @@
 # Code Interview Platform
 
-## Project Overview
+Real-time, multi-user web app for mock technical interviews: shared Monaco editor, live chat, presence, and multi-language code execution.
 
-The **Code Interview Platform** is a real-time, multi-user web application designed to simulate technical coding interviews. It allows interviewers and candidates to collaboratively write and edit code in a shared environment while communicating through live chat and presence indicators.
+**[Live demo on GitHub Pages](https://wajm1.github.io/Code-Interview-Platform/)** — open the same URL in two tabs to try collaborative editing (demo mode, no server required).
 
-The platform focuses on **low-latency collaboration**, **synchronized state**, and **interview realism**, making it suitable for mock interviews, peer practice, or small-scale technical assessments.
+## Features
 
-Unlike static coding platforms, this project emphasizes **real-time systems design** concepts such as event-driven architecture, WebSockets, concurrency, and shared state management.
+- Real-time collaborative code editor (Monaco)
+- Live chat and room presence
+- Room-based sessions with invite links (`?room=my-room`)
+- Display names with live rename
+- Run Python in-browser (Pyodide) and JavaScript in-browser; C++ / Java via a configured execution backend when available
+- GitHub Pages demo mode (BroadcastChannel) for visitors; full Socket.IO stack for local / Docker deploys
+## Tech stack
 
-## Key Features
+| Layer | Tools |
+| --- | --- |
+| Frontend | React, Vite, Monaco Editor, Socket.IO client |
+| Backend | Python, Flask, Flask-SocketIO, eventlet |
+| Execution | Pyodide (Python), Piston API (other languages) |
 
-*   Real-time collaborative code editor
-*   Live chat between participants
-*   User presence list (who is currently in the room)
-*   Room-based sessions for interviews
-*   Username setting and live renaming
-*   Synchronized editor state across all clients
-*   Low-latency updates using WebSockets
+## Quick start (local)
 
-## Technologies Used
+### Requirements
 
-*   **Python** – Core backend language
-*   **Flask** – Web framework for routing and server logic
-*   **Flask-SocketIO** – Real-time bidirectional communication
-*   **eventlet** – Asynchronous networking for low-latency sockets
-*   **HTML / CSS / JavaScript** – Frontend UI
-*   **Socket.IO** – Client-side real-time communication
+- Python 3.10+
+- Node.js 20+
+- npm
 
-## System Architecture
-
-The application follows an **event-driven architecture**:
-
-*   Clients connect to the server via WebSockets
-*   User actions (typing, joining, chatting, renaming) emit events
-*   The server updates shared state and broadcasts changes
-*   All connected clients stay synchronized in real time
-
-This mirrors real-world collaborative systems such as Google Docs or shared IDEs, but in a simplified and interview-focused environment.
-
-## Requirements
-
-*   Python 3.9+
-*   pip (Python package manager)
-
-## Building and Running
-
-### Installation
-
-Clone the repository and navigate to the project root:
+### 1. Backend
 
 ```bash
-git clone https://github.com/WajahatMa/Code-Interview-Platform.git
-cd Code-Interview-Platform
+cd Backend
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+```
 
+Backend listens on [http://127.0.0.1:5050](http://127.0.0.1:5050).
+
+### 2. Frontend
+
+```bash
+cd Frontend
+npm install
+npm run dev
+```
+
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Optional query params: `?room=interview-1&name=Waj`.
+
+### Production-style (one process)
+
+```bash
+cd Frontend && npm install && VITE_BASE=/ npm run build && cd ..
+cd Backend && source .venv/bin/activate && python app.py
+```
+
+Then open [http://127.0.0.1:5050](http://127.0.0.1:5050) — Flask serves the built UI and WebSockets on the same origin.
+
+## Live demo on GitHub
+
+Pushing to `main` runs [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml), which builds the frontend in **demo mode** and deploys it to **GitHub Pages**.
+
+1. Repo → **Settings → Pages → Build and deployment → Source: GitHub Actions**
+2. Push to `main` (or run the workflow manually)
+3. Visit `https://<user>.github.io/Code-Interview-Platform/`
+
+Demo mode syncs editor, chat, and presence across tabs in the same browser (no backend). Use a full-stack host for true multi-device sessions.
+
+### Optional: full-stack host (Render)
+
+[`render.yaml`](render.yaml) + [`Dockerfile`](Dockerfile) deploy the Flask app with the built UI:
+
+1. [Render](https://render.com) → New → Blueprint → select this repo
+2. After deploy, set repo variable `VITE_API_URL` to your Render URL and `VITE_DEMO` behavior by clearing demo (workflow sets `VITE_DEMO=false` when `VITE_API_URL` is set)
+3. Re-run the Pages workflow so the GitHub demo talks to your live backend
+
+## Project layout
+
+```
+Backend/app.py          # Flask + Socket.IO + Piston proxy + static hosting
+Frontend/src/App.jsx    # Shell UI: presence, chat, run console
+Frontend/src/Editor.jsx # Monaco + code sync
+Frontend/src/demoSocket.js  # Offline demo transport for GitHub Pages
+Frontend/src/config.js  # API base URL helper
+```
+
+## Socket events (summary)
+
+| Event | Direction | Purpose |
+| --- | --- | --- |
+| `join` | client → server | Enter a room with a display name |
+| `room:state` | server → joiner | Hydrate code, chat, members, language |
+| `room:presence` | server → room | Member join / leave / rename |
+| `code:update` / `code:apply` | both | Sync editor text |
+| `chat:send` / `chat:recv` | both | Chat messages |
+| `lang:update` / `lang:apply` | both | Shared language |
+| `name:update` / `you:renamed` | both | Rename flow |
+
+## License
+
+MIT

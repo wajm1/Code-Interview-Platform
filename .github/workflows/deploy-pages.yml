@@ -1,0 +1,60 @@
+name: Deploy GitHub Pages demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: Install and build demo
+        env:
+          # Project Pages URL is https://<user>.github.io/<repo>/
+          VITE_BASE: /${{ github.event.repository.name }}/
+          # Offline collaborative demo (BroadcastChannel) — no backend required
+          VITE_DEMO: "true"
+          # Optional: point at a live Render/Fly backend instead of demo mode
+          # Set repo variable VITE_API_URL and VITE_DEMO=false to use it.
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+        run: |
+          npm ci
+          if [ -n "$VITE_API_URL" ]; then
+            export VITE_DEMO=false
+          fi
+          npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: Frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

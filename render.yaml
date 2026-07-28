@@ -1,0 +1,12 @@
+# Render Blueprint — one-click deploy of the full stack demo
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: code-interview-platform
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 10000
