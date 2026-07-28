@@ -2,7 +2,9 @@
 
 Real-time, multi-user web app for mock technical interviews: shared Monaco editor, live chat, presence, and multi-language code execution.
 
-**[Live demo on GitHub Pages](https://wajm1.github.io/Code-Interview-Platform/)** — open the same URL in two tabs to try collaborative editing (demo mode, no server required).
+**[Live site](https://wajm1.github.io/Code-Interview-Platform/)** — landing page for your resume; use **Try the live demo** to open a shared room.
+
+Resume link: `https://wajm1.github.io/Code-Interview-Platform/`
 
 ## Features
 
