@@ -1,61 +1,37 @@
 /**
- * In-browser demo backend using BroadcastChannel + localStorage.
+ * Cross-device demo transport using Trystero (WebRTC peer-to-peer).
  *
- * Lets visitors try collaboration on GitHub Pages with no server:
- * open the same room URL in two tabs to see live code, chat, and presence.
+ * GitHub Pages has no Flask server, so rooms sync directly between browsers
+ * via public signaling (BitTorrent trackers). Same invite link (?room=…)
+ * works across phones, laptops, and networks.
+ *
  * Mirrors the Socket.IO event surface used by App / Editor.
  */
 
-const CHANNEL_PREFIX = "cip-demo:";
-const STORE_PREFIX = "cip-demo-store:";
+import { joinRoom } from "trystero";
 
-function storageKey(roomId) {
-  return `${STORE_PREFIX}${roomId}`;
-}
+const APP_ID = "code-interview-platform-wajm1";
 
-function loadRoom(roomId) {
-  try {
-    const raw = localStorage.getItem(storageKey(roomId));
-    if (raw) return JSON.parse(raw);
-  } catch {
-    /* ignore */
-  }
-  return {
-    code: "# Demo mode — open this URL in another tab to collaborate.\n",
-    chat: [],
-    members: {},
-    language: "python",
-  };
-}
-
-function saveRoom(roomId, state) {
-  localStorage.setItem(storageKey(roomId), JSON.stringify(state));
-}
-
-function closeRoom(roomId) {
-  localStorage.removeItem(storageKey(roomId));
-}
-
-function pruneMembers(members) {
-  const now = Date.now();
-  const next = {};
-  for (const [name, ts] of Object.entries(members || {})) {
-    if (now - ts < 15000) next[name] = ts;
-  }
-  return next;
-}
+const DEFAULT_CODE =
+  "# Shared room — open the invite link on another device to collaborate.\n";
 
 /**
- * Minimal Socket.IO-like client for demo mode.
+ * Minimal Socket.IO-like client for demo / Pages mode.
  * Supports: on/off/emit, connected, connect/disconnect events.
  */
 export function createDemoSocket() {
   const handlers = new Map();
-  let channel = null;
+  let room = null;
+  let sync = null;
   let roomId = "default";
   let myName = null;
-  let heartbeat = null;
+  let joinedAt = 0;
   let connected = false;
+  let localCode = DEFAULT_CODE;
+  let localChat = [];
+  let localLang = "python";
+  /** @type {Map<string, string>} peerId -> display name */
+  const peerNames = new Map();
 
   const api = {
     get connected() {
@@ -89,69 +65,159 @@ export function createDemoSocket() {
     });
   }
 
-  function broadcast(message) {
-    channel?.postMessage(message);
+  function members() {
+    const names = new Set();
+    if (myName) names.add(myName);
+    for (const name of peerNames.values()) {
+      if (name) names.add(name);
+    }
+    return [...names].sort();
   }
 
-  function publishPresence(extra = {}) {
-    const state = loadRoom(roomId);
-    state.members = pruneMembers(state.members);
-    if (myName) state.members[myName] = Date.now();
-    saveRoom(roomId, state);
-    const members = Object.keys(state.members).sort();
-    fire("room:presence", { roomId, members, ...extra });
-    broadcast({ type: "presence", roomId, members, ...extra });
+  function emitPresence(extra = {}) {
+    fire("room:presence", { roomId, members: members(), ...extra });
+  }
+
+  function snapshot() {
+    return {
+      t: "state",
+      joinedAt,
+      name: myName,
+      code: localCode,
+      chat: localChat.slice(-50),
+      language: localLang,
+    };
+  }
+
+  function applyRemoteState(msg) {
+    if (typeof msg.code === "string") {
+      localCode = msg.code;
+      fire("code:apply", { roomId, code: msg.code });
+    }
+    if (Array.isArray(msg.chat)) {
+      localChat = msg.chat;
+    }
+    if (msg.language) {
+      localLang = msg.language;
+      fire("lang:apply", { roomId, language: msg.language });
+    }
+    fire("room:state", {
+      roomId,
+      code: localCode,
+      chat: localChat,
+      members: members(),
+      language: localLang,
+      you: myName,
+    });
   }
 
   function handleEmit(event, data) {
     if (event === "join") {
       roomId = data?.roomId || "default";
       myName = data?.name || `User-${Math.random().toString(36).slice(2, 7)}`;
-      channel?.close();
-      channel = new BroadcastChannel(`${CHANNEL_PREFIX}${roomId}`);
-      channel.onmessage = (ev) => onPeerMessage(ev.data);
+      joinedAt = Date.now();
+      localCode = DEFAULT_CODE;
+      localChat = [];
+      localLang = "python";
+      peerNames.clear();
 
-      const state = loadRoom(roomId);
-      state.members = pruneMembers(state.members);
-      const base = myName;
-      let name = base;
-      let i = 2;
-      while (state.members[name]) {
-        name = `${base} (${i++})`;
+      if (room) {
+        try {
+          room.leave();
+        } catch {
+          /* ignore */
+        }
       }
-      myName = name;
-      state.members[myName] = Date.now();
-      saveRoom(roomId, state);
+
+      room = joinRoom({ appId: APP_ID }, `cip:${roomId}`, {
+        onJoinError: ({ error, peerId }) => {
+          console.warn("[cip] peer join issue", peerId, error);
+        },
+      });
+      sync = room.makeAction("sync");
+
+      room.onPeerJoin = (peerId) => {
+        // Announce ourselves; existing peers answer with full state if older.
+        sync.send({ t: "hello", name: myName, joinedAt }, { target: peerId });
+      };
+
+      room.onPeerLeave = (peerId) => {
+        const left = peerNames.get(peerId);
+        peerNames.delete(peerId);
+        emitPresence(left ? { left } : {});
+      };
+
+      sync.onMessage = (msg, { peerId }) => {
+        if (!msg || typeof msg !== "object") return;
+
+        if (msg.t === "hello") {
+          if (msg.name) peerNames.set(peerId, msg.name);
+          emitPresence({ joined: msg.name });
+          // Share our snapshot so late joiners catch up.
+          sync.send(snapshot(), { target: peerId });
+          return;
+        }
+
+        if (msg.t === "state") {
+          if (msg.name) peerNames.set(peerId, msg.name);
+          // Prefer state from peers who joined the room earlier than we did.
+          if (typeof msg.joinedAt === "number" && msg.joinedAt <= joinedAt) {
+            applyRemoteState(msg);
+          }
+          emitPresence();
+          return;
+        }
+
+        if (msg.t === "code") {
+          localCode = msg.code ?? "";
+          fire("code:apply", { roomId, code: localCode });
+          return;
+        }
+
+        if (msg.t === "chat") {
+          if (!msg.entry) return;
+          localChat = [...localChat, msg.entry].slice(-100);
+          fire("chat:recv", msg.entry);
+          return;
+        }
+
+        if (msg.t === "lang") {
+          if (!msg.language) return;
+          localLang = msg.language;
+          fire("lang:apply", { roomId, language: localLang });
+          return;
+        }
+
+        if (msg.t === "rename") {
+          if (msg.name) peerNames.set(peerId, msg.name);
+          emitPresence(
+            msg.from
+              ? { renamed: { from: msg.from, to: msg.name } }
+              : undefined,
+          );
+        }
+      };
 
       fire("room:state", {
         roomId,
-        code: state.code || "",
-        chat: (state.chat || []).slice(-50),
-        members: Object.keys(state.members).sort(),
-        language: state.language || "python",
+        code: localCode,
+        chat: localChat,
+        members: members(),
+        language: localLang,
         you: myName,
       });
-      publishPresence({ joined: myName });
-
-      clearInterval(heartbeat);
-      heartbeat = setInterval(() => publishPresence(), 4000);
+      emitPresence({ joined: myName });
       return;
     }
 
     if (event === "name:update") {
-      const state = loadRoom(roomId);
+      const next = (data?.name || "").trim();
+      if (!next || !myName) return;
       const old = myName;
-      let next = (data?.name || "").trim();
-      if (!next || !old) return;
-      delete state.members[old];
-      let name = next;
-      let i = 2;
-      while (state.members[name]) name = `${next} (${i++})`;
-      myName = name;
-      state.members[myName] = Date.now();
-      saveRoom(roomId, state);
+      myName = next;
       fire("you:renamed", { name: myName });
-      publishPresence({ renamed: { from: old, to: myName } });
+      emitPresence({ renamed: { from: old, to: myName } });
+      sync?.send({ t: "rename", from: old, name: myName });
       return;
     }
 
@@ -159,80 +225,43 @@ export function createDemoSocket() {
       const text = (data?.text || "").trim();
       if (!text || !myName) return;
       const entry = { name: myName, text, ts: Date.now() / 1000 };
-      const state = loadRoom(roomId);
-      state.chat = [...(state.chat || []), entry].slice(-100);
-      saveRoom(roomId, state);
-      // Others receive via channel; sender already optimistically updates UI
-      broadcast({ type: "chat", entry });
+      localChat = [...localChat, entry].slice(-100);
+      sync?.send({ t: "chat", entry });
       return;
     }
 
     if (event === "code:update") {
-      const state = loadRoom(roomId);
-      state.code = data?.code ?? "";
-      saveRoom(roomId, state);
-      broadcast({ type: "code", roomId, code: state.code });
+      localCode = data?.code ?? "";
+      sync?.send({ t: "code", code: localCode });
       return;
     }
 
     if (event === "lang:update") {
       const language = data?.language;
       if (!language) return;
-      const state = loadRoom(roomId);
-      state.language = language;
-      saveRoom(roomId, state);
+      localLang = language;
       fire("lang:apply", { roomId, language });
-      broadcast({ type: "lang", roomId, language });
-    }
-  }
-
-  function onPeerMessage(msg) {
-    if (!msg || msg.roomId && msg.roomId !== roomId && msg.type !== "chat") {
-      // chat messages don't always include roomId in older shape
-    }
-    if (msg.type === "code" && msg.roomId === roomId) {
-      fire("code:apply", { roomId, code: msg.code });
-    } else if (msg.type === "chat") {
-      fire("chat:recv", msg.entry);
-    } else if (msg.type === "lang" && msg.roomId === roomId) {
-      fire("lang:apply", { roomId, language: msg.language });
-    } else if (msg.type === "presence" && msg.roomId === roomId) {
-      fire("room:presence", msg);
+      sync?.send({ t: "lang", language });
     }
   }
 
   function cleanup() {
-    clearInterval(heartbeat);
-    if (myName) {
-      const state = loadRoom(roomId);
-      delete state.members[myName];
-      const remaining = pruneMembers(state.members);
-      const closed = Object.keys(remaining).length === 0;
-      if (closed) {
-        closeRoom(roomId);
-      } else {
-        state.members = remaining;
-        saveRoom(roomId, state);
-      }
-      broadcast({
-        type: "presence",
-        roomId,
-        members: Object.keys(remaining).sort(),
-        left: myName,
-        closed,
-      });
+    try {
+      room?.leave();
+    } catch {
+      /* ignore */
     }
-    channel?.close();
-    channel = null;
+    room = null;
+    sync = null;
+    peerNames.clear();
     connected = false;
     fire("disconnect");
   }
 
-  // Pretend we connected after a tick so App's effects behave normally.
   queueMicrotask(() => {
     connected = true;
     fire("connect");
-    fire("server:hello", { msg: "demo" });
+    fire("server:hello", { msg: "p2p-demo" });
   });
 
   if (typeof window !== "undefined") {
@@ -242,7 +271,7 @@ export function createDemoSocket() {
   return api;
 }
 
-/** True when the build (or URL) asks for offline demo mode. */
+/** True when the build (or URL) asks for offline / Pages demo mode. */
 export function shouldUseDemoMode() {
   if (import.meta.env.VITE_DEMO === "true") return true;
   if (typeof window !== "undefined") {

@@ -116,9 +116,9 @@ export default function Landing() {
       <section className="lp-how">
         <h2>How a session works</h2>
         <p>
-          Open a room, share the invite link, and code together. Presence and
-          chat stay in sync while you run Python or JavaScript right in the
-          browser.
+          Open a room, share the invite link, and code together from any device.
+          Presence and chat stay in sync while you run Python or JavaScript
+          right in the browser.
         </p>
       </section>
 

@@ -386,7 +386,13 @@ export default function App() {
             Room: <code>{roomId}</code>
           </span>
           <span className="ws-muted">
-            {DEMO_MODE ? "demo mode" : connected ? "connected" : "offline"}
+            {DEMO_MODE
+              ? connected
+                ? "multi-device"
+                : "connecting…"
+              : connected
+                ? "connected"
+                : "offline"}
           </span>
         </div>
         <div className="ws-topbar-right">

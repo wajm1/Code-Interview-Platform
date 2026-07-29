@@ -33,10 +33,9 @@ jobs:
         env:
           # Project Pages URL is https://<user>.github.io/<repo>/
           VITE_BASE: /${{ github.event.repository.name }}/
-          # Offline collaborative demo (BroadcastChannel) — no backend required
+          # Peer-to-peer multi-device rooms (no Flask required on Pages)
           VITE_DEMO: "true"
-          # Optional: point at a live Render/Fly backend instead of demo mode
-          # Set repo variable VITE_API_URL and VITE_DEMO=false to use it.
+          # Optional: point at a live Render/Fly backend instead of P2P demo
           VITE_API_URL: ${{ vars.VITE_API_URL }}
         run: |
           npm ci
